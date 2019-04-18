@@ -4,13 +4,17 @@ namespace App\Http\Controllers;
 
 
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class SlowController extends Controller
 {
-    //
+    /**
+     * slowquery.log to slow/slow_show.log
+     */
     public function index()
     {
         ini_set('memory_limit', '-1');
+        ini_set('max_execution_time', '-1');
 
         $file_path = storage_path('app/temp/slow/slowquery.log');
         $myfile = fopen($file_path, "r") or die("Unable to open file!");
@@ -28,7 +32,12 @@ class SlowController extends Controller
                     $temp_arr[$i]['User'] = explode(' ', trim($temp_user[0]))[1];
                     $temp_arr[$i]['Host'] = trim($temp_user[1], '[|]');
                     if (isset($temp_user[2])) {
-                        $temp_arr[$i]['Id'] = explode(' ', trim($temp_user[2]))[1];
+                        $explode_id = explode(' ', trim($temp_user[2]));
+                        if ($explode_id && is_array($explode_id) && isset($explode_id[1])) {
+                            $temp_arr[$i]['Id'] = $explode_id[1];
+                        }else{
+                            Log::error($explode_id);
+                        }
                     }
                     break;
                 case '# Quer':
@@ -55,7 +64,7 @@ class SlowController extends Controller
             if (isset($temp_arr[$i]['sql'])) {
                 $temp_arr[$i]['hash'] = md5($temp_arr[$i]['sql']);
             }
-            if (99999 == $i) {
+            if (199497 == $i) {
                 break;
             }
         }
@@ -64,6 +73,18 @@ class SlowController extends Controller
         unset($temp_arr);
         $temp_group = $temp_collect->groupBy('hash');
         foreach ($temp_group as $key => $value) {
+            $value = json_decode(json_encode($value), true);
+            if (empty($value)) {
+                continue;
+            }
+            $array_query_time = array_column(array_values($value), 'Query_time');
+            $array_time = array_column(array_values($value), 'Time');
+            if ($array_query_time) {
+                $temp_count['max_query_time'] = max($array_query_time);
+            }
+            if ($array_time) {
+                $temp_count['max_time'] = max($array_time);
+            }
             $temp_count['count'] = count($value);
             $temp_count['hash'] = $key;
             if (isset($value[0]['sql'])) {
@@ -80,7 +101,6 @@ class SlowController extends Controller
         $temp_count_collect = collect($temp_counts);
         unset($temp_counts);
         $sorted = $temp_count_collect->sortByDesc('count');
-        dd($sorted);
-
+        Storage::disk('local')->put('slow/slow_show.log', $sorted);
     }
 }
